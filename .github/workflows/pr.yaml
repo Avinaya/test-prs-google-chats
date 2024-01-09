@@ -8,76 +8,91 @@ on:
       - main
     
 jobs:
+  labeler:
+    runs-on: ubuntu-latest
+    name: Label the PR size
+    steps:
+      - name: PR Size Labeler
+        uses: codelytv/pr-size-labeler@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          xs_label: 'size/xs'
+          xs_max_size: '10'
+          s_label: 'size/s'
+          s_max_size: '100'
+          m_label: 'size/m'
+          m_max_size: '500'
+          l_label: 'size/l'
+          l_max_size: '1000'
+          xl_label: 'size/xl'
+          fail_if_xl: 'false'
+          message_if_xl: >
+            This PR exceeds the recommended size of 1000 lines.
+            Please make sure you are NOT addressing multiple issues with one PR.
+            Note this PR might be rejected due to its size.
+          github_api_url: 'api.github.com'
+          files_to_ignore: ''
+
+  determine-pr-size:
+    runs-on: ubuntu-latest
+    outputs:
+      step_output: ${{ steps.labeler.outputs.pr_size }}
+    needs: labeler
+    steps:
+      - name: Get PR Size
+        id: pr_size
+        run: echo "::set-output name=pr_size::${{ needs.labeler.outputs.PR_SIZE }}"
+
   build:
     runs-on: ubuntu-latest
-
+    needs: determine-pr-size
     steps:
     - name: Git PR Details
       run: |
-          echo "PR creator: ${{ github.event.pull_request.user.login }}"
-          echo "PR title: ${{ github.event.pull_request.title }}"
-          echo "PR number: ${{ github.event.pull_request.number }}"
-          echo "PR url: ${{ github.event.pull_request.html_url }}"
-          echo "PR body: ${{ github.event.pull_request.body }}"
-          echo "Assigned labels: " ${{ join(github.event.pull_request.labels.*.name) }}
-          echo "Assignees: " ${{ join(github.event.pull_request.assignees.*.login) }}
-    - name: Google Chat Notification
-      run: |
-          curl --location --request POST '${{ secrets.PR_WEBHOOK_SECERET }}' \
+          pr_creator="${{ github.event.pull_request.user.login }}"
+          pr_title="${{ github.event.pull_request.title }}"
+          pr_number="${{ github.event.pull_request.number }}"
+          pr_url="${{ github.event.pull_request.html_url }}"
+          pr_body="${{ github.event.pull_request.body }}"
+          pr_labels="$(echo "${{ join(github.event.pull_request.labels.*.name) }}" | sed 's/ /, /g')"
+          pr_assignees="$(echo "${{ join(github.event.pull_request.assignees.*.login) }}" | sed 's/ /, /g')"
+
+          pr_size="${{ needs.determine-pr-size.outputs.step_output }}"
+
+          message="<cards><header><title>🏴‍☠️ Ahoy there!</title><subtitle>A new pull request has just been opened by 🥹 $pr_creator with size $pr_size.</subtitle></header><sections><widgets><keyValue><topLabel>👉</topLabel><content>$pr_title</content></keyValue><keyValue><topLabel>🔗</topLabel><content>$pr_url</content></keyValue></widgets><textParagraph>$pr_body</textParagraph></sections></cards>"
+
+          curl --location --request POST '${{ secrets.PR_WEBHOOK_SECRET }}' \
           --header 'Content-Type: application/json' \
-          --data-raw '{
-              "cards": [
-                  {
-                      "header": {
-                          "title": "PR Tracker",
-                          "subtitle": "PR No: #${{ github.event.pull_request.number }}"
-                      },
-                      "sections": [
-                          {
-                              "widgets": [
-                                  {
-                                     "keyValue": {
-                                          "topLabel": "Creator",
-                                          "content": "${{ github.event.pull_request.user.login }}"
-                                      },
-                                   },
-                                   {
-                                     "keyValue": {
-                                          "topLabel": "Title",
-                                          "content": "${{ github.event.pull_request.title }}"
-                                      }
-                                   },
-                                   {
-                                     "keyValue": {
-                                          "topLabel": "Assigned Labels",
-                                          "content": "- ${{ join(github.event.pull_request.labels.*.name) }}"
-                                      }
-                                   },
-                                   {
-                                     "keyValue": {
-                                          "topLabel": "Assignees",
-                                          "content": "- ${{ join(github.event.pull_request.assignees.*.login) }}"
-                                      }
-                                   },
-                                   {
-                                      "buttons": [
-                                          {
-                                              "textButton": {
-                                                  "text": "OPEN PR",
-                                                  "onClick": {
-                                                      "openLink": {
-                                                          "url": "${{ github.event.pull_request.html_url }}"
-                                                      }
-                                                  }
-                                              }
-                                          }
-                                      ]
-                                  }
-                              ]
+          --data-raw "{
+              \"cards\": [
+                {
+                  \"header\": {
+                    \"title\": \"🏴‍☠️ Ahoy there!\",
+                    \"subtitle\": \"A new pull request has just been opened by 🥹 $pr_creator with size $pr_size.\"
+                  },
+                  \"sections\": [
+                    {
+                      \"widgets\": [
+                        {
+                          \"keyValue\": {
+                            \"topLabel\": \"👉\",
+                            \"content\": \"$pr_title\"
                           }
+                        },
+                        {
+                          \"keyValue\": {
+                            \"topLabel\": \"🔗\",
+                            \"content\": \"$pr_url\"
+                          }
+                        }
                       ]
-                  }
+                    },
+                    {
+                      \"textParagraph\": \"$pr_body\"
+                    }
+                  ]
+                }
               ]
-          }'
+          }"
       env:
-        PR_WEBHOOK_SECERET: ${{ secrets.PR_WEBHOOK_SECERET }}
+        PR_WEBHOOK_SECRET: ${{ secrets.PR_WEBHOOK_SECRET }}
