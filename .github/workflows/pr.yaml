@@ -40,6 +40,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: labeler
     steps:
+    - name: Extract PR Size from Logs
+      id: extract_pr_size
+      run: echo "::set-output name=pr_size::$(echo "${{ needs.labeler.outputs.step_output }}" | grep -oP 'Final labels: \"size/(\w+)"' | sed 's/Final labels: "size\/\(.*\)"/\1/')"
+
     - name: Git PR Details
       run: |
           pr_creator="${{ github.event.pull_request.user.login }}"
@@ -47,12 +51,12 @@ jobs:
           pr_number="${{ github.event.pull_request.number }}"
           pr_url="${{ github.event.pull_request.html_url }}"
           pr_body="${{ github.event.pull_request.body }}"
+          pr_labels="$(echo "${{ join(github.event.pull_request.labels.*.name) }}" | sed 's/ /, /g')"
+          pr_assignees="$(echo "${{ join(github.event.pull_request.assignees.*.login) }}" | sed 's/ /, /g')"
 
-          pr_size="${{ needs.labeler.outputs.step_output }}"
+          pr_size="${{ needs.extract_pr_size.outputs.pr_size }}"
 
-          message="<cards><header><title>🏴‍☠️ Ahoy there!</title><subtitle>A new pull request has just been opened by 🥹 $pr_creator with size $pr_size.</subtitle></header><sections><widgets><keyValue><topLabel>👉</topLabel><content>$pr_title</content></keyValue><keyValue><topLabel>🔗</topLabel><content>$pr_url</content></keyValue></widgets><textParagraph>$pr_body</textParagraph></sections></cards>"
-
-          curl --location --request POST '${{ secrets.PR_WEBHOOK_SECRET }}' \
+          curl --location --request POST "${{ secrets.PR_WEBHOOK_SECRET }}" \
           --header 'Content-Type: application/json' \
           --data-raw "{
               \"cards\": [
