@@ -11,8 +11,11 @@ jobs:
   labeler:
     runs-on: ubuntu-latest
     name: Label the PR size
+    outputs:
+      step_output: ${{ steps.set_pr_size.outputs.pr_size }}
     steps:
       - name: PR Size Labeler
+        id: set_pr_size
         uses: codelytv/pr-size-labeler@v1
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -33,19 +36,9 @@ jobs:
           github_api_url: 'api.github.com'
           files_to_ignore: ''
 
-  determine-pr-size:
-    runs-on: ubuntu-latest
-    outputs:
-      step_output: ${{ steps.labeler.outputs.pr_size }}
-    needs: labeler
-    steps:
-      - name: Get PR Size
-        id: pr_size
-        run: echo "::set-output name=pr_size::${{ needs.labeler.outputs.PR_SIZE }}"
-
   build:
     runs-on: ubuntu-latest
-    needs: determine-pr-size
+    needs: labeler
     steps:
     - name: Git PR Details
       run: |
@@ -57,7 +50,7 @@ jobs:
           pr_labels="$(echo "${{ join(github.event.pull_request.labels.*.name) }}" | sed 's/ /, /g')"
           pr_assignees="$(echo "${{ join(github.event.pull_request.assignees.*.login) }}" | sed 's/ /, /g')"
 
-          pr_size="${{ needs.determine-pr-size.outputs.step_output }}"
+          pr_size="${{ needs.labeler.outputs.step_output }}"
 
           message="<cards><header><title>🏴‍☠️ Ahoy there!</title><subtitle>A new pull request has just been opened by 🥹 $pr_creator with size $pr_size.</subtitle></header><sections><widgets><keyValue><topLabel>👉</topLabel><content>$pr_title</content></keyValue><keyValue><topLabel>🔗</topLabel><content>$pr_url</content></keyValue></widgets><textParagraph>$pr_body</textParagraph></sections></cards>"
 
